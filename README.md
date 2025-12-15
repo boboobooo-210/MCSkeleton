@@ -1,17 +1,23 @@
-## 推送代码到 GitHub (Simplified)
+## Git 常用命令 (Git Commands)
 
+### 1. 日常更新代码 (Daily Update)
+修改代码后，运行以下命令即可推送：
 ```bash
-# 1. 提交本地更改
-git init
 git add .
 git commit -m "Update project"
+git push
+```
 
-# 2. 设置远程仓库并推送
+### 2. 首次设置 (First Time Setup)
+*仅在项目初始化时运行一次*
+```bash
+git init
 git branch -M main
-git remote remove origin 2>/dev/null || true
 git remote add origin https://github.com/boboobooo-210/MCSkeleton.git
+git pull origin main --allow-unrelated-histories
 git push -u origin main
 ```
+
 
 # CRSkeleton - GCN Skeleton Tokenizer
 
