@@ -1,0 +1,107 @@
+# NTU RGB+D 时空图卷积(GCN)骨架Tokenizer训练配置 - 10-part语义分组版本
+
+optimizer: {
+  type: AdamW,
+  kwargs: {
+    lr: 0.0008,  # 适当降低学习率适应小批量
+    weight_decay: 0.0001
+  }
+}
+
+scheduler: {
+  type: CosineAnnealingWarmRestarts,  # 改用带重启的余弦退火
+  kwargs: {
+    T_0: 30,          # 第一个重启周期30 epochs
+    T_mult: 1,        # 每次周期长度保持不变
+    eta_min: 0.00001  # 最小学习率
+  }
+}
+
+# KL散度权重配置（用于VQ-VAE损失）
+# 注意：这里的权重是 VQ loss 的系数，不是真正的 KL 散度
+# 优化策略：延长权重增长时间，在训练后期引入衰减
+kldweight: {
+  start: 0.5,    # 从一开始就给一定权重，避免编码器学到"懒惰"的捷径
+  target: 2.0,   # 最终权重设为2.0，让VQ loss比重构损失更重要
+  ntime: 25000,  # 延长到25000步（约50个epoch），让码本有更多时间学习
+  decay_start_epoch: 50,  # 从第50个epoch开始衰减
+  decay_target: 1.0       # 衰减到1.0，给重构更多权重
+}
+
+# 数据集配置 - 内存优化
+dataset: {
+  train: { 
+    _base_: cfgs/dataset_configs/NTU_skeleton_raw.yaml, 
+    others: {
+      subset: 'train',
+      npoints: 25,
+      normalize: true,
+      bs: 4  # 减小批大小节省内存
+    }
+  },
+  val: { 
+    _base_: cfgs/dataset_configs/NTU_skeleton_raw.yaml, 
+    others: {
+      subset: 'val',
+      npoints: 25,
+      normalize: true,
+      bs: 4
+    }
+  },
+  test: {
+    _base_: cfgs/dataset_configs/NTU_skeleton_raw.yaml,
+    others: {
+      subset: 'test',
+      npoints: 25,
+      normalize: true,
+      bs: 4
+    }
+  }
+}
+
+# GCN骨架Tokenizer配置 - 10-part语义分组版本（自适应码本大小）
+# 10个语义组：head_neck, spine, left_arm, left_forearm, right_arm, right_forearm, left_leg, left_foot, right_leg, right_foot
+# 关键改进：
+# - 分离头颈和脊柱，提升姿态捕捉精度
+# - 分离大臂和小臂，提升手臂动作精度
+# - 分离大腿和小腿+脚，提升腿部动作精度
+# - 关节重叠：肘关节(5,9)在大小臂中重叠，膝关节(13,17)在大腿和小腿中重叠，骨盆(0)和颈部关节(2,20)在多个分组中重叠
+# 
+# 自适应码本策略（V3优化）：
+# - 头部/躯干：32 tokens（动作范围小，需要的表示容量小）
+# - 手臂：64 tokens（保持较大空间，避免表达能力不足）
+# - 腿部/脚：64 tokens（V3降低：避免码本坍缩，实测利用率31-48%合格）
+# 总词汇量：32*2（头+脊柱）+ 64*4（四个手臂部位）+ 64*4（四肢腿脚）= 576 tokens
+model: {
+  NAME: GCNSkeletonTokenizer_10p,
+  num_joints: 25,
+  num_tokens: 576,  # V3: 64+256+256=576 tokens
+  token_dim: 128,   # token维度保持128
+  temporal_length: 1,
+  tokens_per_group: 64,  # 默认每组64个token（用于未在tokens_config中指定的部位）
+  group_token_dim: 128,  # 组token维度128
+  # 部位自适应码本大小配置（V3优化：保持手臂表达能力）
+  tokens_config: {
+    head_neck: 32,      # 头颈部：32 tokens（实测43.8%合格）
+    spine: 32,          # 脊柱：32 tokens（实测90.6%优秀）
+    left_arm: 64,       # V3: 左大臂：64 tokens（保持表达空间）
+    left_forearm: 64,   # V3: 左小臂：64 tokens（实测42.2%）
+    right_arm: 64,      # V3: 右大臂：64 tokens（保持表达空间）
+    right_forearm: 64,  # V3: 右小臂：64 tokens（实测18.8%）
+    left_leg: 64,       # V3: 左大腿：128→64 tokens（实测31.2%✓）
+    left_foot: 64,      # V3: 左小腿+脚：128→64 tokens（实测40.6%✓）
+    right_leg: 64,      # V3: 右大腿：128→64 tokens（实测31.2%✓）
+    right_foot: 64      # V3: 右小腿+脚：128→64 tokens（实测48.4%✓）
+  }
+}
+
+# 训练设置 - 内存优化
+total_bs: 8         # 通过梯度累积达到等效批大小
+step_per_update: 2  # 梯度累积2步 (4*2=8)
+max_epoch: 150      # 训练150轮
+use_gpu: true
+val_freq: 10        # 减少验证频率节省时间
+num_workers: 2      # 减少数据加载进程
+seed: 2021
+consider_metric: CDL1
+

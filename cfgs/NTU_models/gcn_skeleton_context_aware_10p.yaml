@@ -1,0 +1,89 @@
+# NTU RGB+D 时空图卷积(GCN)骨架Tokenizer训练配置 - 10-part Context-Aware版本
+# V4 Update: 引入父节点作为参照锚点，解决姿态歧义（如坐姿/站姿直腿区分）
+
+optimizer: {
+  type: AdamW,
+  kwargs: {
+    lr: 0.0008,
+    weight_decay: 0.0001
+  }
+}
+
+scheduler: {
+  type: CosineAnnealingWarmRestarts,
+  kwargs: {
+    T_0: 30,
+    T_mult: 1,
+    eta_min: 0.00001
+  }
+}
+
+kldweight: {
+  start: 0.5,
+  target: 2.0,
+  ntime: 25000,
+  decay_start_epoch: 50,
+  decay_target: 1.0
+}
+
+# 数据集配置 - 保持 augment: True 以学习旋转不变性，但通过 Context-Aware Grouping 解决局部歧义
+dataset: {
+  train: { 
+    _base_: cfgs/dataset_configs/NTU_skeleton_raw.yaml, 
+    others: {
+      subset: 'train',
+      npoints: 25,
+      normalize: true,
+      bs: 4
+    }
+  },
+  val: { 
+    _base_: cfgs/dataset_configs/NTU_skeleton_raw.yaml, 
+    others: {
+      subset: 'val',
+      npoints: 25,
+      normalize: true,
+      bs: 4
+    }
+  },
+  test: {
+    _base_: cfgs/dataset_configs/NTU_skeleton_raw.yaml,
+    others: {
+      subset: 'test',
+      npoints: 25,
+      normalize: true,
+      bs: 4
+    }
+  }
+}
+
+model: {
+  NAME: GCNSkeletonTokenizer_10p,
+  num_joints: 25,
+  num_tokens: 704, # 更新总Token数 (64+64 + 128*8)
+  token_dim: 128,
+  temporal_length: 1,
+  tokens_per_group: 128, # 默认值增加
+  group_token_dim: 128,
+  tokens_config: {
+    head_neck: 32,      # 32 -> 64 (利用率75%，增加空间)
+    spine: 32,          # 32 -> 64 (利用率59%，增加空间)
+    left_arm: 64,      # 64 -> 128 (利用率37%，虽然低但需要更多空间区分细微动作)
+    left_forearm: 128,  # 64 -> 128 (利用率64%，需要扩容)
+    right_arm: 64,     # 64 -> 128 (对称)
+    right_forearm: 128, # 64 -> 128 (利用率100%，严重不足，必须扩容)
+    left_leg: 64,      # 64 -> 128 (利用率31%，解决抱膝/正坐歧义需要更多Token)
+    left_foot: 64,     # 64 -> 128 (利用率31%)
+    right_leg: 64,     # 64 -> 128 (对称)
+    right_foot: 64     # 64 -> 128 (利用率17%，虽然低但为了对称和细粒度)
+  }
+}
+
+total_bs: 8
+step_per_update: 2
+max_epoch: 150
+use_gpu: true
+val_freq: 10
+num_workers: 2
+seed: 2021
+consider_metric: CDL1

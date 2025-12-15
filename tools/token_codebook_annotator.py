@@ -17,6 +17,84 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
+
+DEFAULT_SEMANTIC_GROUPS_5 = {
+    'head_spine': [0, 1, 2, 3, 20],
+    'left_arm': [4, 5, 6, 7, 21, 22],
+    'right_arm': [8, 9, 10, 11, 23, 24],
+    'left_leg': [12, 13, 14, 15],
+    'right_leg': [16, 17, 18, 19]
+}
+
+
+DEFAULT_GROUP_DISPLAY_NAMES = {
+    'head_spine': {'zh': '头部脊柱', 'en': 'Head & Spine'},
+    'head_neck': {'zh': '头颈', 'en': 'Head & Neck'},
+    'spine': {'zh': '脊柱', 'en': 'Spine'},
+    'left_arm': {'zh': '左上臂', 'en': 'Left Upper Arm'},
+    'left_forearm': {'zh': '左前臂与手', 'en': 'Left Forearm & Hand'},
+    'right_arm': {'zh': '右上臂', 'en': 'Right Upper Arm'},
+    'right_forearm': {'zh': '右前臂与手', 'en': 'Right Forearm & Hand'},
+    'left_leg': {'zh': '左大腿', 'en': 'Left Thigh'},
+    'left_foot': {'zh': '左小腿与脚', 'en': 'Left Calf & Foot'},
+    'right_leg': {'zh': '右大腿', 'en': 'Right Thigh'},
+    'right_foot': {'zh': '右小腿与脚', 'en': 'Right Calf & Foot'}
+}
+
+
+DEFAULT_GROUP_TEMPLATES = {
+    'head_spine': [
+        "正常姿态", "抬头", "低头", "左侧转", "右侧转",
+        "挺直站立", "前倾", "后仰", "左倾斜", "右倾斜"
+    ],
+    'head_neck': [
+        "头部正视", "低头查看", "抬头观察", "向左侧倾", "向右侧倾",
+        "快速点头", "缓慢摇头", "左顾", "右盼", "轻微扭头"
+    ],
+    'spine': [
+        "脊柱挺直", "轻微弯腰", "前屈", "后伸", "躯干左倾",
+        "躯干右倾", "微微含胸", "扩胸", "稳定站立", "核心收紧"
+    ],
+    'left_arm': [
+        "自然垂落", "上举", "前伸", "侧举", "叉腰",
+        "向内合拢", "向外展开", "快速摆动", "停于体侧", "防守姿态"
+    ],
+    'left_forearm': [
+        "下垂放松", "抬起", "向内弯曲", "拿捏姿态", "握拳",
+        "手心向上", "手心向外", "指向前方", "支撑动作", "微旋转"
+    ],
+    'right_arm': [
+        "自然垂落", "上举", "前伸", "侧举", "叉腰",
+        "向内合拢", "向外展开", "快速摆动", "停于体侧", "防守姿态"
+    ],
+    'right_forearm': [
+        "下垂放松", "抬起", "向内弯曲", "握拳", "手掌展开",
+        "手心向上", "手心向外", "指向目标", "支撑姿态", "微旋转"
+    ],
+    'left_leg': [
+        "站立稳固", "大腿前抬", "大腿后摆", "转髋外展", "准备跨步",
+        "弓步支撑", "快速收回", "向侧展开", "提膝", "跨步起势"
+    ],
+    'left_foot': [
+        "脚掌着地", "脚尖点地", "脚跟抬起", "向前伸展", "向后撤离",
+        "侧向滑步", "蹬地发力", "缓慢蹲降", "踮脚", "收脚回位"
+    ],
+    'right_leg': [
+        "站立稳固", "大腿前抬", "大腿后摆", "转髋外展", "准备跨步",
+        "弓步支撑", "快速收回", "向侧展开", "提膝", "跨步起势"
+    ],
+    'right_foot': [
+        "脚掌着地", "脚尖点地", "脚跟抬起", "向前伸展", "向后撤离",
+        "侧向滑步", "蹬地发力", "缓慢蹲降", "踮脚", "收脚回位"
+    ]
+}
+
+
+GENERIC_TEMPLATES = [
+    "默认姿态", "轻微调整", "自然放松", "快速收回", "准备动作",
+    "保持稳定", "渐进施力", "平衡控制", "动作预备", "放松回位"
+]
+
 # 禁用字体警告
 warnings.filterwarnings('ignore', category=UserWarning, message='.*Glyph.*missing from font.*')
 
@@ -47,41 +125,19 @@ class TokenCodebookAnnotator:
         self.codebook_path = self.token_analysis_dir / "codebook_annotation_template.json"
         self.output_path = self.token_analysis_dir / "codebook_annotations.json"
         
-        # NTU RGB+D 25关节点的语义分组（来自GCNSkeletonTokenizer）
-        self.semantic_groups = {
-            'head_spine': [0, 1, 2, 3, 20],               # 头部+脊柱 (5个关节)
-            'left_arm': [4, 5, 6, 7, 21, 22],             # 左臂+左手 (6个关节)
-            'right_arm': [8, 9, 10, 11, 23, 24],          # 右臂+右手 (6个关节)
-            'left_leg': [12, 13, 14, 15],                 # 左腿 (4个关节)
-            'right_leg': [16, 17, 18, 19]                 # 右腿 (4个关节)
-        }
-        
-        # MARS动作模板（用于快速选择）
-        self.mars_action_templates = {
-            'head_spine': [
-                "正常姿态", "抬头", "低头看", "左侧转", "右侧转",
-                "挺直站立", "前倾", "后仰", "左倾斜", "右倾斜"
-            ],
-            'left_arm': [
-                "自然垂落", "上举", "前伸", "侧举", "叉腰",
-                "向内弯曲", "自然弯曲", "后伸", "左侧抬起", "向上弯曲"
-            ],
-            'right_arm': [
-                "自然垂落", "上举", "前伸", "侧举", "叉腰",
-                "向内弯曲", "自然弯曲", "后伸", "右侧抬起", "向上弯曲"
-            ],
-            'left_leg': [
-                "站立", "弯曲", "前抬", "侧抬", "蹲下",
-                "后退", "踢出", "向前跨步", "向左跨步", "跳跃"
-            ],
-            'right_leg': [
-                "站立", "弯曲", "前抬", "侧抬", "蹲下",
-                "后退", "踢出", "向前跨步", "向右跨步", "跳跃"
-            ]
-        }
-        
-        self.part_names = ['head_spine', 'left_arm', 'right_arm', 'left_leg', 'right_leg']
-        self.part_display_names = ['头部脊柱', '左臂', '右臂', '左腿', '右腿']
+        # 加载动态语义组配置（兼容10部位与旧5部位）
+        self.token_schema_info = self.load_token_schema()
+        self.token_schema_path = self.token_schema_info.get('source_path')
+        self.tokenizer_model = self.token_schema_info.get('tokenizer_model')
+        self.semantic_groups = self.token_schema_info['semantic_groups']
+        self.group_offsets = self.token_schema_info['group_offsets']
+        self.group_token_sizes = self.token_schema_info['group_token_sizes']
+        self.tokens_config = self.token_schema_info['tokens_config']
+        self.part_names = self.token_schema_info['group_order']
+        self.part_display_map = self.token_schema_info['display_map']
+        self.part_display_names = [self.part_display_map[name]['zh'] for name in self.part_names]
+        self.mars_action_templates = self._build_action_templates(self.part_names)
+        self.default_tokens_per_group = self.token_schema_info.get('default_tokens_per_group', 128)
         
         # 加载MARS Token数据集
         self.dataset = None
@@ -96,6 +152,154 @@ class TokenCodebookAnnotator:
         self.current_annotations = {}
         self.load_existing_annotations()
     
+    @staticmethod
+    def _title_case(name: str) -> str:
+        return name.replace('_', ' ').title()
+
+    def _format_display_name(self, group_name: str, lang: str = 'zh') -> str:
+        defaults = DEFAULT_GROUP_DISPLAY_NAMES.get(group_name)
+        if defaults:
+            candidate = defaults.get(lang)
+            if candidate:
+                return candidate
+            alt = defaults.get('en' if lang == 'zh' else 'zh')
+            if alt:
+                return alt
+        title = self._title_case(group_name)
+        return title
+
+    def _build_action_templates(self, group_names: List[str]) -> Dict[str, List[str]]:
+        templates = {}
+        for name in group_names:
+            base = DEFAULT_GROUP_TEMPLATES.get(name, GENERIC_TEMPLATES)
+            templates[name] = list(base)
+        return templates
+
+    def load_token_schema(self) -> Dict:
+        """加载 token_schema.json，兼容10部位与旧5部位配置"""
+
+        schema_candidates = [
+            Path("/home/uo/myProject/CRSkeleton/data/MARS_recon_tokens/token_schema.json"),
+            Path("/home/uo/myProject/HumanPoint-BERT/data/MARS_recon_tokens/token_schema.json"),
+            self.project_root / "data" / "MARS_recon_tokens" / "token_schema.json",
+            self.token_analysis_dir / "token_schema.json"
+        ]
+
+        schema_data = None
+        schema_path = None
+
+        for candidate in schema_candidates:
+            candidate = Path(candidate)
+            if candidate.is_dir():
+                candidate = candidate / "token_schema.json"
+            if candidate.exists():
+                try:
+                    with open(candidate, 'r', encoding='utf-8') as f:
+                        schema_data = json.load(f)
+                    schema_path = candidate
+                    print(f"✅ 加载Token Schema: {candidate}")
+                    break
+                except Exception as exc:
+                    print(f"⚠️ 无法读取 token_schema.json ({candidate}): {exc}")
+
+        if schema_data is None:
+            print("⚠️ 未找到 token_schema.json，使用默认5部位配置")
+            group_order = list(DEFAULT_SEMANTIC_GROUPS_5.keys())
+            group_token_sizes = [128] * len(group_order)
+            group_offsets = []
+            offset = 0
+            for size in group_token_sizes:
+                group_offsets.append(offset)
+                offset += size
+
+            display_map = {}
+            for name in group_order:
+                display_map[name] = {
+                    'zh': self._format_display_name(name, 'zh'),
+                    'en': self._format_display_name(name, 'en')
+                }
+
+            return {
+                'semantic_groups': {name: list(indices) for name, indices in DEFAULT_SEMANTIC_GROUPS_5.items()},
+                'group_order': group_order,
+                'group_offsets': group_offsets,
+                'group_token_sizes': group_token_sizes,
+                'tokens_config': {name: 128 for name in group_order},
+                'display_map': display_map,
+                'default_tokens_per_group': 128,
+                'tokenizer_model': 'GCNSkeletonTokenizer',
+                'source_path': None,
+                'raw_metadata': {}
+            }
+
+        group_order = schema_data.get('group_order')
+        group_joint_indices = schema_data.get('group_joint_indices') or schema_data.get('semantic_groups') or {}
+        if not group_order:
+            group_order = list(group_joint_indices.keys()) or list(DEFAULT_SEMANTIC_GROUPS_5.keys())
+
+        default_tokens_per_group = int(schema_data.get('default_tokens_per_group', 128))
+
+        tokens_config_raw = schema_data.get('tokens_config', {}) or {}
+        if hasattr(tokens_config_raw, 'items'):
+            tokens_config = {str(k): int(v) for k, v in tokens_config_raw.items()}
+        else:
+            tokens_config = {str(k): int(v) for k, v in tokens_config_raw} if tokens_config_raw else {}
+
+        semantic_groups = {}
+        for name in group_order:
+            joints = group_joint_indices.get(name)
+            if joints is None and name in DEFAULT_SEMANTIC_GROUPS_5:
+                joints = DEFAULT_SEMANTIC_GROUPS_5[name]
+            if joints is None:
+                joints = []
+            semantic_groups[name] = [int(j) for j in joints]
+
+        group_token_sizes = schema_data.get('group_token_sizes')
+        if group_token_sizes is None:
+            group_token_sizes = []
+            for name in group_order:
+                size = tokens_config.get(name)
+                if size is None:
+                    size = default_tokens_per_group
+                group_token_sizes.append(int(size))
+        else:
+            group_token_sizes = [int(v) for v in group_token_sizes]
+
+        group_offsets = schema_data.get('group_offsets')
+        if group_offsets is None:
+            group_offsets = []
+            offset = 0
+            for size in group_token_sizes:
+                group_offsets.append(offset)
+                offset += int(size)
+        else:
+            group_offsets = [int(v) for v in group_offsets]
+
+        display_source = schema_data.get('group_display_names', {})
+        display_map = {}
+        for name in group_order:
+            info = display_source.get(name, {}) if isinstance(display_source, dict) else {}
+            zh_name = info.get('zh') or info.get('cn') or self._format_display_name(name, 'zh')
+            en_name = info.get('en') or info.get('english') or self._format_display_name(name, 'en')
+            display_map[name] = {'zh': zh_name, 'en': en_name}
+
+        final_tokens_config = {}
+        for idx, name in enumerate(group_order):
+            final_tokens_config[name] = int(tokens_config.get(name, group_token_sizes[idx]))
+
+        return {
+            'semantic_groups': semantic_groups,
+            'group_order': group_order,
+            'group_offsets': group_offsets,
+            'group_token_sizes': group_token_sizes,
+            'tokens_config': final_tokens_config,
+            'display_map': display_map,
+            'default_tokens_per_group': default_tokens_per_group,
+            'tokenizer_model': schema_data.get('tokenizer_model'),
+            'source_path': str(schema_path) if schema_path else None,
+            'raw_metadata': schema_data
+        }
+
     def load_token_template(self):
         """加载Token模板"""
         if not self.codebook_path.exists():
@@ -105,7 +309,21 @@ class TokenCodebookAnnotator:
         with open(self.codebook_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             self.token_template = data['codebook_annotation']
-            self.metadata = data['metadata']
+            self.metadata = data.get('metadata', {}) or {}
+
+        # 对齐元数据与最新schema
+        self.metadata.setdefault('group_order', self.part_names)
+        self.metadata.setdefault('group_offsets', self.group_offsets)
+        self.metadata.setdefault('group_token_sizes', self.group_token_sizes)
+        self.metadata.setdefault('tokens_config', self.tokens_config)
+        self.metadata.setdefault('group_display_names', self.part_display_map)
+        self.metadata.setdefault('default_tokens_per_group', self.default_tokens_per_group)
+        self.metadata.setdefault('total_token_vocab', int(sum(self.group_token_sizes)))
+        self.metadata.setdefault('schema_version', '1.1.0')
+        self.metadata['tokenizer_model'] = self.tokenizer_model
+        self.metadata['token_schema_path'] = self.token_schema_path
+        if 'total_unique_tokens' not in self.metadata:
+            self.metadata['total_unique_tokens'] = sum(len(tokens) for tokens in self.token_template.values())
         
         print(f"✅ 加载Token模板: {self.metadata['total_unique_tokens']} 个Token")
     
@@ -151,15 +369,37 @@ class TokenCodebookAnnotator:
                 total_tokens += 1
         
         # 保存模板
+        if not self.group_offsets:
+            offsets = []
+            offset_val = 0
+            for size in self.group_token_sizes:
+                offsets.append(offset_val)
+                offset_val += size
+            self.group_offsets = offsets
+
+        total_vocab = sum(self.group_token_sizes) if self.group_token_sizes else len(self.part_names) * self.default_tokens_per_group
+
+        metadata_payload = {
+            'schema_version': '1.1.0',
+            'total_samples': total_samples,
+            'total_unique_tokens': total_tokens,
+            'estimated_annotation_time_hours': total_tokens * 0.5 / 60,
+            'token_counts': {part: dict(sorted(counts.items())) for part, counts in token_counts.items()},
+            'created_at': datetime.now().isoformat(),
+            'group_order': self.part_names,
+            'group_offsets': self.group_offsets,
+            'group_token_sizes': self.group_token_sizes,
+            'group_display_names': self.part_display_map,
+            'tokens_config': self.tokens_config,
+            'default_tokens_per_group': self.default_tokens_per_group,
+            'total_token_vocab': int(total_vocab),
+            'tokenizer_model': self.tokenizer_model,
+            'token_schema_path': self.token_schema_path
+        }
+
         output_data = {
             'codebook_annotation': template,
-            'metadata': {
-                'total_samples': total_samples,
-                'total_unique_tokens': total_tokens,
-                'estimated_annotation_time_hours': total_tokens * 0.5 / 60,
-                'token_counts': {part: dict(sorted(counts.items())) for part, counts in token_counts.items()},
-                'created_at': datetime.now().isoformat()
-            }
+            'metadata': metadata_payload
         }
         
         with open(self.codebook_path, 'w', encoding='utf-8') as f:
@@ -168,6 +408,9 @@ class TokenCodebookAnnotator:
         print(f"\n✅ 生成模板: {self.codebook_path}")
         print(f"   总计 {total_tokens} 个唯一Token")
         print(f"   预计标注时间: {total_tokens * 0.5:.1f} 分钟")
+
+        self.token_template = template
+        self.metadata = metadata_payload
         
     def load_existing_annotations(self):
         """加载已有标注"""
@@ -179,6 +422,8 @@ class TokenCodebookAnnotator:
         else:
             self.current_annotations = {part: {} for part in self.part_names}
             print("📝 初始化新的标注文件")
+
+        self._normalize_annotation_groups()
     
     def load_mars_token_dataset(self):
         """加载MARS Token数据集（所有样本）"""
@@ -300,13 +545,8 @@ class TokenCodebookAnnotator:
                 print(f"   请根据身体部位描述进行标注")
             return
         
-        part_name_en = {
-            'head_spine': 'Head-Spine',
-            'left_arm': 'Left Arm',
-            'right_arm': 'Right Arm',
-            'left_leg': 'Left Leg',
-            'right_leg': 'Right Leg'
-        }[body_part]
+        part_display_info = self.part_display_map.get(body_part, {'en': self._title_case(body_part)})
+        part_name_en = part_display_info.get('en', self._title_case(body_part))
         
         print(f"\n📊 Found {len(samples)} samples with Token {token_id} ({part_name_en})")
         
@@ -505,6 +745,14 @@ class TokenCodebookAnnotator:
         
         # 自动保存
         self.save_annotations()
+
+    def _normalize_annotation_groups(self):
+        """确保标注结构与当前语义组对齐"""
+        normalized = {part: {} for part in self.part_names}
+        for part, annotations in (self.current_annotations or {}).items():
+            if part in normalized and isinstance(annotations, dict):
+                normalized[part] = dict(annotations)
+        self.current_annotations = normalized
     
     def annotate_body_part(self, body_part: str):
         """标注某个身体部位的所有Token"""
@@ -539,15 +787,26 @@ class TokenCodebookAnnotator:
     
     def save_annotations(self):
         """保存标注结果"""
+        annotated = self.count_annotated()
+
+        self.metadata['total_samples'] = self.metadata.get('total_samples', 0)
+        self.metadata['total_unique_tokens'] = self.metadata.get('total_unique_tokens', sum(len(tokens) for tokens in self.current_annotations.values()))
+        self.metadata['annotated_tokens'] = annotated
+        self.metadata['annotation_progress'] = f"{annotated}/{self.metadata['total_unique_tokens']}"
+        self.metadata['last_updated'] = datetime.now().isoformat()
+        self.metadata['group_order'] = self.part_names
+        self.metadata['group_offsets'] = self.group_offsets
+        self.metadata['group_token_sizes'] = self.group_token_sizes
+        self.metadata['group_display_names'] = self.part_display_map
+        self.metadata['tokens_config'] = self.tokens_config
+        self.metadata['default_tokens_per_group'] = self.default_tokens_per_group
+        self.metadata['total_token_vocab'] = self.metadata.get('total_token_vocab', int(sum(self.group_token_sizes)))
+        self.metadata['tokenizer_model'] = self.tokenizer_model
+        self.metadata['token_schema_path'] = self.token_schema_path
+
         output_data = {
             'codebook_annotation': self.current_annotations,
-            'metadata': {
-                'total_samples': self.metadata['total_samples'],
-                'total_unique_tokens': self.metadata['total_unique_tokens'],
-                'annotated_tokens': self.count_annotated(),
-                'annotation_progress': f"{self.count_annotated()}/{self.metadata['total_unique_tokens']}",
-                'last_updated': datetime.now().isoformat()
-            }
+            'metadata': self.metadata
         }
         
         with open(self.output_path, 'w', encoding='utf-8') as f:
